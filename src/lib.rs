@@ -26,7 +26,7 @@ pub struct Game {
     users_turn: AccountId,
     x_player: AccountId,
     o_player: AccountId,
-    board: Vector<String>,
+    board: Vec<String>,
     game_complete_status: bool,
     number_of_turns_played: u8,
 }
@@ -47,12 +47,14 @@ pub struct Contract {
 }
 
 fn get_new_game(player1: AccountId, player2: AccountId) -> Game{
-    let mut board = Vector::new(b"m");
-    let mut b: Vec<String> = Vec::new();
+    // Intialize the vector that will contain status of each space in the game as all empty spaces.
+    // Each index of the vector is along the y axis and each char in the string is along the x axis
+    let mut board: Vec<String> = Vec::new();
     let empty_row = "   ".to_string();
     for x in 0..ROWS{
-        board.push(&empty_row);
+        board.push(empty_row.clone());
     }
+    // Return the new game
     Game{
         users_turn: player1.clone(), 
         x_player: player1.clone(), 
@@ -65,6 +67,7 @@ fn get_new_game(player1: AccountId, player2: AccountId) -> Game{
 
 // Checks if the user selected placement is valid
 pub fn check_if_placement_is_valid(x_placement: usize, y_placement: usize){
+    // The tic tac toe board has a x and y axis with valid values only in the interval of 1-3
     if x_placement > 3 || y_placement > 3 {
         env::panic_str(
             &format!("Positions only go up to 3, {:?},{:?} is too high", x_placement, y_placement),
@@ -88,9 +91,10 @@ impl Contract {
     }
     
     pub fn new_game(&mut self, challenger: AccountId){
+        let method_caller = env::signer_account_id();
         // Check if the method caller has a game already
         assert!(
-            self.game_keys.contains_key(&env::signer_account_id()) == false, 
+            self.game_keys.contains_key(&method_caller) == false, 
             "You must finish your current game before playing a new one."
         );
         
@@ -103,31 +107,36 @@ impl Contract {
         
         // Make a key to access the game and store it in the game_keys lookup map for each user
         // and store the game under the game_key
-        let game_key = format!("{}{}", env::signer_account_id(), challenger);
+        let game_key = format!("{}{}", method_caller.clone(), challenger);
         
-        self.game_keys.insert(&env::signer_account_id(),&game_key);
+        self.game_keys.insert(&method_caller,&game_key);
         self.game_keys.insert(&challenger,&game_key);
         
-        self.games.insert(&game_key, &get_new_game(env::signer_account_id(), challenger.clone()));
+        self.games.insert(&game_key, &get_new_game(method_caller.clone(), challenger.clone()));
         
         // If a new game was started check if each user has stats and initialize them if not
         if !self.user_stats.contains_key(&challenger){
             self.user_stats.insert(&challenger, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
-        if !self.user_stats.contains_key(&env::signer_account_id()){
-            self.user_stats.insert(&env::signer_account_id(), &Stats{ wins: 0, loses: 0, ties: 0 });
+        if !self.user_stats.contains_key(&method_caller){
+            self.user_stats.insert(&method_caller, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
     }
 
 
     pub fn play_turn(&mut self, x_placement: usize, y_placement: usize){
         let player = env::signer_account_id();
+        // Panic if the user does not have a game
         assert!(
             self.game_keys.contains_key(&player) == true, 
             "You do not have an active game"
         );
+        // Get the players game
         let game_key = self.game_keys.get(&player).unwrap();
         let mut game = self.games.get(&game_key).unwrap();
+        // If the game is completed before the player can perform their turn it means that they have lost game
+        // or if the number of turns played is greater than or equal to 9 then there are no more spaces to play on 
+        // and therefore they have tied
         if game.game_complete_status {
             self.view_game();
             self.game_keys.remove(&player);
@@ -143,14 +152,18 @@ impl Contract {
             self.increment_ties(player);
             return
         }
+        // Panic if it is not the players turn
         assert_eq!(game.users_turn,player,"It is not your turn");
         check_if_placement_is_valid(x_placement, y_placement);
+        // Convert the entered placements into indexable values 
         let x_index = x_placement - 1;
         let y_index = y_placement - 1;
-        let space_value = game.board.get(y_index.try_into().unwrap()).unwrap().get(x_index..x_index+1).unwrap().chars().nth(0).unwrap();
+        // Get the value of the space being played on, if it is not epty panic
+        let space_value = game.board[y_index.clone()].clone().get(x_index..x_index+1).unwrap().chars().nth(0).unwrap();
         if space_value != EMPTY_SPACE {
             env::panic_str(&format!("Position {:?},{:?} is already played", x_placement, y_placement));
         }
+        // Get the value of the players marker and record who the next player will be
         let mut new_marker = ' ';
         let mut next_player = "placeholder.near".parse().unwrap();
         if player == game.x_player{
@@ -161,19 +174,21 @@ impl Contract {
             new_marker = O_SPACE;
             next_player = game.x_player.clone();
         } 
-        // .replace_range(x_index..x_index+1, &new_marker.to_string())
-        let mut new_board = game.board;
-        let mut new_row = new_board.get(y_index.try_into().unwrap()).unwrap();
+        // Take the board and add the players marker in the entered location and increment the number of turns played.
+        // Then, insert the new board back into the games lookup map.
+        let mut new_board = game.board.clone();
+        let mut new_row = game.board[y_index.clone()].clone();
         new_row.replace_range(x_index..x_index+1, &new_marker.to_string());
-        new_board.replace(y_index.try_into().unwrap(), &new_row);
+        new_board[y_index.clone()] = new_row;
         game.board = new_board;
         game.users_turn = next_player;
         // Increment number of turns played
         game.number_of_turns_played += 1;
         self.games.insert(&game_key, &game);
         self.view_game();
-        // Check if game has been won
-        if self.has_user_won_on_turn(game_key.clone(), new_marker.to_string(), x_index, y_index){
+        // Check if game has been won if the user won update that the game has been completed, remove the game from the users game_key
+        // and increment the users wins.  Else if the number of placements has reached 9 thena tie has been reached. 
+        if self.has_user_won_on_turn(game_key.clone(), new_marker.to_string(), x_index, y_index.clone()){
             game.game_complete_status = true;
             self.games.insert(&game_key, &game);
             self.game_keys.remove(&player);
@@ -192,20 +207,25 @@ impl Contract {
     #[private]
     pub fn has_user_won_on_turn(&mut self, game_key: String, player_marker: String, x_index: usize, y_index: usize) -> bool {
         check_if_placement_is_valid(x_index + 1, y_index + 1);
+
         let board = self.games.get(&game_key).unwrap().board;
-        let three_in_a_row = format!("{}{}{}", player_marker, player_marker, player_marker);
-        if board.get(y_index.try_into().unwrap()).unwrap() == three_in_a_row{
+        let three_in_a_row = format!("{}{}{}", player_marker, player_marker, player_marker); // Assembles a winning three in a row string of the player's markers to be used for comparison
+        // Checks the horizontal case of winning by comparing a row at the y index to the three_in_a_row
+        if board[y_index] == three_in_a_row{
             env::log_str("Game has been won");
             return true;
         }
+        // Checks the vertical case of winning by comparing a column at the x index to the three_in_a_row
         if format!("{}{}{}", board.get(0).unwrap().get(x_index..x_index+1).unwrap(), board.get(1).unwrap().get(x_index..x_index+1).unwrap(), board.get(2).unwrap().get(x_index..x_index+1).unwrap())
             == three_in_a_row{
             env::log_str("Game has been won");
             return true;
         }
-        // If this is true the space is in position to be checked for the diagonal
+        // If this is true the space is in position to be checked for the diagonal.
+        // A space is deemed to be in position to be checked for the diagonal if it is any of the corners or is the middle position as these are the only posiitons that
+        // can be won in diagonal.  Summing the x and y index will return a even value if it is in any of the positions.
         if (x_index + y_index)%2 == 0{
-            // If centre tile check both diagonal directions
+            // If the position is the centre tile check both diagonal directions
             if x_index == 1 && y_index == 1{
                 if format!("{}{}{}", board.get(0).unwrap().get(0..1).unwrap(), board.get(1).unwrap().get(1..2).unwrap(), board.get(2).unwrap().get(2..3).unwrap())
                     == three_in_a_row || 
@@ -213,11 +233,15 @@ impl Contract {
                     == three_in_a_row {
                         return true;
                     }
+            // If the x and y index are summed and the value is 2 the position is either the top right corner or the bottom left corner and therefore
+            // The positive slop diagonal must be checked.
             } else if (x_index + y_index) == 2{
                 if format!("{}{}{}", board.get(2).unwrap().get(0..1).unwrap(), board.get(1).unwrap().get(1..2).unwrap(), board.get(0).unwrap().get(2..3).unwrap())
                     == three_in_a_row{
                     return true;
                 }
+            // Else the position is either the bottom right corner or the top left cornerand therefore
+            // The negative slop diagonal must be checked.
             }else {
                 if format!("{}{}{}", board.get(0).unwrap().get(0..1).unwrap(), board.get(1).unwrap().get(1..2).unwrap(), board.get(2).unwrap().get(2..3).unwrap())
                     == three_in_a_row {
@@ -228,11 +252,13 @@ impl Contract {
         false
     }
 
+    // Constructs the tic tac toe board to visually see the progress of the users game.
     pub fn view_game(&self) {
         assert!(
             self.game_keys.contains_key(&env::signer_account_id()) == true, 
             "You do not have an active game"
         );
+        // Get the board seperate the rows and print each position.
         let game_key = self.game_keys.get(&env::signer_account_id());
         let board = self.games.get(&game_key.unwrap()).unwrap().board;
         // continue here
@@ -245,6 +271,7 @@ impl Contract {
         third_row.get(1..2).unwrap(), third_row.get(2..3).unwrap()));
     }
 
+    // Returns the stats of a user that is or has played games
     pub fn view_user_stats(&self, user: AccountId){
         self.panic_if_user_does_not_have_stats(user.clone());
         let stats = self.user_stats.get(&user).unwrap();
@@ -285,7 +312,6 @@ impl Contract {
         stats.ties += 1;
         self.user_stats.insert(&user, &stats);
     }
-    // ADD CONTRACT METHODS HERE
 }
 
 /*
@@ -308,16 +334,5 @@ mod tests {
         let mut builder = VMContextBuilder::new();
         builder.signer_account_id(predecessor.clone()).predecessor_account_id(predecessor);
         builder
-    }
-
-
-    #[test]
-    fn my_test() {
-        let mut context = get_context("zdefranc.testnet".parse().unwrap());
-        testing_env!(context.build());
-        let mut contract = Contract::new();
-        testing_env!(context.is_view(true).build());
-        contract.new_game("mike.testnet".parse().unwrap());
-        // assert_eq!(contract.view_game(), "         ");
     }
 }
