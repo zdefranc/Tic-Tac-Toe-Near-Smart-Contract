@@ -31,7 +31,6 @@ pub struct Game {
     number_of_turns_played: u8,
 }
 
-
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct GameRequests {
     requesting_user: AccountId,
