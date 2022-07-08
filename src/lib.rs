@@ -32,6 +32,12 @@ pub struct Game {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
+pub struct GameRequests {
+    requesting_user: AccountId,
+    wager_ammount: usize,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct Stats {
     wins: u128,
     loses: u128,
