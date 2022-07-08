@@ -3,7 +3,8 @@ use std::ops::Index;
 
 use near_sdk::collections::{
     LookupMap,
-    Vector,
+    Vector, 
+    UnorderedSet,
 };
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
@@ -14,8 +15,11 @@ use near_sdk::{
 use near_sdk::env::{self, signer_account_id};
 use near_sdk::{near_bindgen, serde};
 use String;
+use internal::*;
 
-const ROWS: u128 = 3;
+mod internal;
+
+const ROWS: u8 = 3;
 const EMPTY_SPACE: char = ' ';
 const X_SPACE: char = 'X';
 const O_SPACE: char = 'O';
@@ -32,10 +36,18 @@ pub struct Game {
 }
 
 
-#[derive(BorshDeserialize, BorshSerialize, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
 pub struct GameRequests {
     requesting_user: AccountId,
     wager_ammount: usize,
+}
+
+// Implements operator overload for GameRequests
+impl PartialEq for GameRequests {
+    fn eq(&self, rhs: &Self) -> bool {
+        return &self.requesting_user == &rhs.requesting_user;
+    }
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -49,42 +61,12 @@ pub struct Stats {
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     game_keys: LookupMap<AccountId, String>,
+    game_requests: LookupMap<AccountId, UnorderedSet<GameRequests>>,
     games: LookupMap<String, Game>,
     user_stats: LookupMap<AccountId, Stats>,
 }
 
-fn get_new_game(player1: AccountId, player2: AccountId) -> Game{
-    // Intialize the vector that will contain status of each space in the game as all empty spaces.
-    // Each index of the vector is along the y axis and each char in the string is along the x axis
-    let mut board: Vec<String> = Vec::new();
-    let empty_row = "   ".to_string();
-    for x in 0..ROWS{
-        board.push(empty_row.clone());
-    }
-    // Return the new game
-    Game{
-        users_turn: player1.clone(), 
-        x_player: player1.clone(), 
-        o_player: player2, 
-        board: board,
-        game_complete_status: false,
-        number_of_turns_played: 0,
-    }
-}
 
-// Checks if the user selected placement is valid
-pub fn check_if_placement_is_valid(x_placement: usize, y_placement: usize){
-    // The tic tac toe board has a x and y axis with valid values only in the interval of 1-3
-    if x_placement > 3 || y_placement > 3 {
-        env::panic_str(
-            &format!("Positions only go up to 3, {:?},{:?} is too high", x_placement, y_placement),
-        );
-    } else if x_placement < 1 || y_placement < 1 {
-        env::panic_str(
-            &format!("The lowest position is 1, {:?},{:?} is too low", x_placement, y_placement),
-        );
-    }
-}
 
 #[near_bindgen]
 impl Contract {
@@ -92,6 +74,7 @@ impl Contract {
     pub fn new() -> Self{
         Self{
             game_keys: LookupMap::new(b"u"),
+            game_requests: LookupMap::new(b"e"),
             games: LookupMap::new(b"c"),
             user_stats: LookupMap::new(b"d"),
         }
@@ -129,6 +112,23 @@ impl Contract {
             self.user_stats.insert(&method_caller, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
     }
+
+    pub fn request_game(&mut self, challenger: AccountId){
+        let mut game_requests = self.game_requests.get(&challenger).unwrap_or_else(|| {
+            //if the account doesn't have any tokens, we create a new unordered set
+            UnorderedSet::new(hash_account_id(&challenger)
+                .try_to_vec()
+                .unwrap(),
+            )
+        });
+        // Test if this line works
+        if game_requests.contains(&GameRequests { requesting_user: env::predecessor_account_id(), wager_ammount: 0 }){
+            env::panic_str(&format!("{} already has requested a game", env::predecessor_account_id().to_string()));
+        }
+        game_requests.insert(&GameRequests { requesting_user: (env::predecessor_account_id()), wager_ammount: (0) });
+        self.game_requests.insert(&challenger, &game_requests);
+    }
+
 
 
     pub fn play_turn(&mut self, x_placement: usize, y_placement: usize){
