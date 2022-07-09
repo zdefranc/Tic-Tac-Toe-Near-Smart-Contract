@@ -21,6 +21,10 @@ const X_SPACE: char = 'X';
 const O_SPACE: char = 'O';
 
 
+pub use crate::refund::*;
+mod refund;
+
+
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct Game {
     users_turn: AccountId,
@@ -105,6 +109,10 @@ impl Contract {
             );
         }
         
+        //Measure the initial storage being used on the contract
+        let initial_storage_usage = env::storage_usage();
+
+
         // Make a key to access the game and store it in the game_keys lookup map for each user
         // and store the game under the game_key
         let game_key = format!("{}{}", method_caller.clone(), challenger);
@@ -121,6 +129,7 @@ impl Contract {
         if !self.user_stats.contains_key(&method_caller){
             self.user_stats.insert(&method_caller, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
+        self.refund_excess_storage(initial_storage_usage);
     }
 
 
