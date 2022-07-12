@@ -169,7 +169,7 @@ impl Contract {
         // and therefore they have tied
         if game.game_complete_status {
             self.view_game();
-            &self.game_keys.remove(&player);
+            self.game_keys.remove(&player);
             self.games.remove(&game_key);
             env::log_str("You have lost :'(");
             self.increment_loses(player);
