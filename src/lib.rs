@@ -120,16 +120,17 @@ impl Contract {
     }
 
     pub fn request_game(&mut self, challenger: AccountId){
+        //if the account doesn't have any tokens, we create a new unordered set
         let mut game_requests = self.game_requests.get(&challenger).unwrap_or_else(|| {
-            //if the account doesn't have any tokens, we create a new unordered set
-        let request_ids: UnorderedSet<AccountId> = UnorderedSet::new(hash_account_id(&challenger)
-            .try_to_vec()
-            .unwrap());
-            GameRequests { request_ids: (request_ids),
+            GameRequests { request_ids: (UnorderedSet::new(hash_account_id(&challenger)
+                .try_to_vec()
+                .unwrap())),
             wager_amounts: LookupMap::new(hash_account_id(&challenger)
             .try_to_vec()
             .unwrap() )}
         });
+
+
         // Test if this line works
         if game_requests.contains(&GameRequest { requesting_user: env::predecessor_account_id(), wager_ammount: 0 }){
             env::panic_str(&format!("{} already has requested a game", env::predecessor_account_id().to_string()));
