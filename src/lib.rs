@@ -45,8 +45,8 @@ pub struct GameRequest {
 
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct GameRequests {
-    request_ids: UnorderedSet<AccountId>,
-    wager_amounts: LookupMap<AccountId, usize>,
+    requested_accounts: UnorderedSet<AccountId>,
+    wager_amounts_per_request: LookupMap<AccountId, usize>,
 }
 
 // Implements operator overload for GameRequest
@@ -123,31 +123,36 @@ impl Contract {
         let challenger = env::predecessor_account_id();
         //if the account doesn't have any tokens, we create a new unordered set
         let mut game_requests = self.game_requests.get(&contender).unwrap_or_else(|| {
-            GameRequests { request_ids: (UnorderedSet::new(hash_account_id(&contender)
+            GameRequests { requested_accounts: (UnorderedSet::new(hash_account_id(&contender)
                 .try_to_vec()
                 .unwrap())),
-            wager_amounts: LookupMap::new(hash_account_id(&contender)
+                wager_amounts_per_request: LookupMap::new(hash_account_id(&contender)
             .try_to_vec()
             .unwrap() )}
         });
-        if game_requests.request_ids.contains(&challenger) {
+        if game_requests.requested_accounts.contains(&challenger) {
             env::panic_str(&format!("You already have requested a game with {}.", contender.to_string()));
         }
-        game_requests.request_ids.insert(&challenger);
-        game_requests.wager_amounts.insert(&challenger, &0);
+        game_requests.requested_accounts.insert(&challenger);
+        game_requests.wager_amounts_per_request.insert(&challenger, &0);
     }
 
     pub fn accept_game(&mut self, challenger: AccountId){
         let contender = env::predecessor_account_id();
         let mut game_requests = self.game_requests.get(&contender
             ).expect(&format!("Request from {} does not exist", challenger));
-        game_requests.request_ids.remove(&challenger);
-        game_requests.wager_amounts.remove(&challenger);
+        game_requests.requested_accounts.remove(&challenger);
+        game_requests.wager_amounts_per_request.remove(&challenger);
         self.new_game(challenger, contender.clone());
         self.game_requests.insert(&contender, &game_requests);
     }
 
-
+    pub fn view_casual_game_requests(&self){
+        let method_caller = env::signer_account_id(); 
+        let game_requests = self.game_requests.get(&method_caller).expect("You do not have any game requests");
+        let wager_amounts_per_request = game_requests.wager_amounts_per_request;
+        game_requests.requested_accounts.iter().for_each(|requested_account| {if wager_amounts_per_request.get(&requested_account).unwrap() == 0 { env::log_str(&format!("{}",requested_account.to_string()))}});
+    }
 
     pub fn play_turn(&mut self, x_placement: usize, y_placement: usize){
         let player = env::signer_account_id();
@@ -164,7 +169,7 @@ impl Contract {
         // and therefore they have tied
         if game.game_complete_status {
             self.view_game();
-            self.game_keys.remove(&player);
+            &self.game_keys.remove(&player);
             self.games.remove(&game_key);
             env::log_str("You have lost :'(");
             self.increment_loses(player);
