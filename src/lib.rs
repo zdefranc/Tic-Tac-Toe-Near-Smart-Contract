@@ -86,66 +86,65 @@ impl Contract {
         }
     }
     
-    pub fn new_game(&mut self, challenger: AccountId){
-        let method_caller = env::signer_account_id();
+    #[private]
+    pub fn new_game(&mut self, challenger: AccountId, contender: AccountId){
         // Check if the method caller has a game already
         assert!(
-            self.game_keys.contains_key(&method_caller) == false, 
+            self.game_keys.contains_key(&contender) == false, 
             "You must finish your current game before playing a new one."
         );
         
-        // Check if the challenger is also in a game
+        // Check if the contender is also in a game
         if self.game_keys.contains_key(&challenger) {
             env::panic_str(
-                &format!("is currently in a game. {:?}", challenger),
+                &format!("is currently in a game. {:?}", contender),
             );
         }
         
         // Make a key to access the game and store it in the game_keys lookup map for each user
         // and store the game under the game_key
-        let game_key = format!("{}{}", method_caller.clone(), challenger);
+        let game_key = format!("{}{}", contender.clone(), challenger);
         
-        self.game_keys.insert(&method_caller,&game_key);
+        self.game_keys.insert(&contender,&game_key);
         self.game_keys.insert(&challenger,&game_key);
         
-        self.games.insert(&game_key, &get_new_game(method_caller.clone(), challenger.clone()));
+        self.games.insert(&game_key, &get_new_game(contender.clone(), challenger.clone()));
         
         // If a new game was started check if each user has stats and initialize them if not
         if !self.user_stats.contains_key(&challenger){
             self.user_stats.insert(&challenger, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
-        if !self.user_stats.contains_key(&method_caller){
-            self.user_stats.insert(&method_caller, &Stats{ wins: 0, loses: 0, ties: 0 });
+        if !self.user_stats.contains_key(&contender){
+            self.user_stats.insert(&contender, &Stats{ wins: 0, loses: 0, ties: 0 });
         }
     }
 
-    pub fn request_game(&mut self, challenger: AccountId){
+    pub fn request_game(&mut self, contender: AccountId){
+        let challenger = env::predecessor_account_id();
         //if the account doesn't have any tokens, we create a new unordered set
-        let mut game_requests = self.game_requests.get(&challenger).unwrap_or_else(|| {
-            GameRequests { request_ids: (UnorderedSet::new(hash_account_id(&challenger)
+        let mut game_requests = self.game_requests.get(&contender).unwrap_or_else(|| {
+            GameRequests { request_ids: (UnorderedSet::new(hash_account_id(&contender)
                 .try_to_vec()
                 .unwrap())),
-            wager_amounts: LookupMap::new(hash_account_id(&challenger)
+            wager_amounts: LookupMap::new(hash_account_id(&contender)
             .try_to_vec()
             .unwrap() )}
         });
-
-
-        // Test if this line works
-        if game_requests.contains(&GameRequest { requesting_user: env::predecessor_account_id(), wager_ammount: 0 }){
-            env::panic_str(&format!("{} already has requested a game", env::predecessor_account_id().to_string()));
+        if game_requests.request_ids.contains(&challenger) {
+            env::panic_str(&format!("You already have requested a game with {}.", contender.to_string()));
         }
-        game_requests.insert(&GameRequest { requesting_user: (env::predecessor_account_id()), wager_ammount: (0) });
-        self.game_requests.insert(&challenger, &game_requests);
+        game_requests.request_ids.insert(&challenger);
+        game_requests.wager_amounts.insert(&challenger, &0);
     }
 
     pub fn accept_game(&mut self, challenger: AccountId){
-        let game_requests = self.game_requests.get(&env::predecessor_account_id()
-).unwrap_or_else(||{
-            env::panic_str(&format!("Request from {} does not exist", challenger));
-        });
-        // Test if this line works
-        
+        let contender = env::predecessor_account_id();
+        let mut game_requests = self.game_requests.get(&contender
+            ).expect(&format!("Request from {} does not exist", challenger));
+        game_requests.request_ids.remove(&challenger);
+        game_requests.wager_amounts.remove(&challenger);
+        self.new_game(challenger, contender.clone());
+        self.game_requests.insert(&contender, &game_requests);
     }
 
 
