@@ -38,13 +38,19 @@ pub struct Game {
 
 #[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
-pub struct GameRequests {
+pub struct GameRequest {
     requesting_user: AccountId,
     wager_ammount: usize,
 }
 
-// Implements operator overload for GameRequests
-impl PartialEq for GameRequests {
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+pub struct GameRequests {
+    request_ids: UnorderedSet<AccountId>,
+    wager_amounts: LookupMap<AccountId, usize>,
+}
+
+// Implements operator overload for GameRequest
+impl PartialEq for GameRequest {
     fn eq(&self, rhs: &Self) -> bool {
         return &self.requesting_user == &rhs.requesting_user;
     }
@@ -61,7 +67,7 @@ pub struct Stats {
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     game_keys: LookupMap<AccountId, String>,
-    game_requests: LookupMap<AccountId, UnorderedSet<GameRequests>>,
+    game_requests: LookupMap<AccountId, GameRequests>,
     games: LookupMap<String, Game>,
     user_stats: LookupMap<AccountId, Stats>,
 }
@@ -116,17 +122,29 @@ impl Contract {
     pub fn request_game(&mut self, challenger: AccountId){
         let mut game_requests = self.game_requests.get(&challenger).unwrap_or_else(|| {
             //if the account doesn't have any tokens, we create a new unordered set
-            UnorderedSet::new(hash_account_id(&challenger)
-                .try_to_vec()
-                .unwrap(),
-            )
+        let request_ids: UnorderedSet<AccountId> = UnorderedSet::new(hash_account_id(&challenger)
+            .try_to_vec()
+            .unwrap());
+            GameRequests { request_ids: (request_ids),
+            wager_amounts: LookupMap::new(hash_account_id(&challenger)
+            .try_to_vec()
+            .unwrap() )}
         });
         // Test if this line works
-        if game_requests.contains(&GameRequests { requesting_user: env::predecessor_account_id(), wager_ammount: 0 }){
+        if game_requests.contains(&GameRequest { requesting_user: env::predecessor_account_id(), wager_ammount: 0 }){
             env::panic_str(&format!("{} already has requested a game", env::predecessor_account_id().to_string()));
         }
-        game_requests.insert(&GameRequests { requesting_user: (env::predecessor_account_id()), wager_ammount: (0) });
+        game_requests.insert(&GameRequest { requesting_user: (env::predecessor_account_id()), wager_ammount: (0) });
         self.game_requests.insert(&challenger, &game_requests);
+    }
+
+    pub fn accept_game(&mut self, challenger: AccountId){
+        let game_requests = self.game_requests.get(&env::predecessor_account_id()
+).unwrap_or_else(||{
+            env::panic_str(&format!("Request from {} does not exist", challenger));
+        });
+        // Test if this line works
+        
     }
 
 
