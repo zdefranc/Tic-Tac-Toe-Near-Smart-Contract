@@ -1,23 +1,12 @@
-# Rust Smart Contract Template
+# Rust Tic-Tac-Toe Smart Contract
 
-## Getting started
+This contract allows users to play games of tic-tac-toe with friends online.
 
-To get started with this template:
+## Functionality
 
-1. Click the "Use this template" button to create a new repo based on this template
-2. Update line 2 of `Cargo.toml` with your project name
-3. Update line 4 of `Cargo.toml` with your project author names
-4. Set up the [prerequisites](https://github.com/near/near-sdk-rs#pre-requisites)
-5. Begin writing your smart contract in `src/lib.rs`
-6. Test the contract 
+The functioanlities this contract offers are:
 
-    `cargo test -- --nocapture`
-
-8. Build the contract
-
-    `RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown --release`
-
-**Get more info at:**
-
-* [Rust Smart Contract Quick Start](https://docs.near.org/docs/develop/contracts/rust/intro)
-* [Rust SDK Book](https://www.near-sdk.io/)
+1. Creating a new game. Users can use the method *new_game* to start a new game with the entered user account.
+2. Playing turn. Users can play their turn in a game using the *play_turn* method.
+3. Users can view the status of selected games using the *view_game* method.
+4. Users can view the stats of selected users and themselves using the *view_user_stats* method.
